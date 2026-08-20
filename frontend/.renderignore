@@ -1,0 +1,3 @@
+# This file tells Render to ignore the Dockerfile in this directory
+# and use the static site build process defined in render.yaml instead.
+# The Dockerfile is used ONLY for local Docker Compose deployment.

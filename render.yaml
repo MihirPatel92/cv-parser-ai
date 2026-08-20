@@ -1,5 +1,5 @@
 services:
-  # ── Backend (FastAPI) ──────────────────────────────────────────────────────
+  # ── Backend (FastAPI Python Service) ──────────────────────────────────────
   - type: web
     name: cv-parser-backend
     runtime: python
@@ -17,37 +17,40 @@ services:
       - key: ALGORITHM
         value: HS256
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: 480
+        value: "480"
       - key: UPLOAD_DIR
         value: /tmp/uploads
       - key: MAX_FILE_SIZE_MB
-        value: 25
+        value: "25"
       - key: DEFAULT_AI_PROVIDER
         value: gemini
       - key: GEMINI_API_KEY
-        sync: false          # You'll set this manually in the Render dashboard
+        sync: false
       - key: OPENAI_API_KEY
         sync: false
       - key: OLLAMA_BASE_URL
         value: http://localhost:11434
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: "3.11.0"
+      - key: FRONTEND_URL
+        value: https://cv-parser-frontend.onrender.com
 
-  # ── Frontend (React Static Site) ──────────────────────────────────────────
-  - type: web
-    name: cv-parser-frontend
-    runtime: static
+# ── Frontend (React Static Site — separate section) ───────────────────────
+staticSites:
+  - name: cv-parser-frontend
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
-    plan: free
+    pullRequestPreviewsEnabled: false
+    envVars:
+      - key: VITE_API_URL
+        value: https://cv-parser-backend.onrender.com
+      - key: NODE_VERSION
+        value: "20"
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
-    envVars:
-      - key: NODE_VERSION
-        value: 20.0.0
 
 # ── PostgreSQL Database ────────────────────────────────────────────────────
 databases:
