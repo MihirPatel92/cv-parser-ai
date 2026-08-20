@@ -35,22 +35,23 @@ services:
       - key: FRONTEND_URL
         value: https://cv-parser-frontend.onrender.com
 
-# ── Frontend (React Static Site — separate section) ───────────────────────
-staticSites:
-  - name: cv-parser-frontend
+  # ── Frontend (React Static Site) ──────────────────────────────────────────
+  - type: web
+    name: cv-parser-frontend
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     pullRequestPreviewsEnabled: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
     envVars:
       - key: VITE_API_URL
         value: https://cv-parser-backend.onrender.com
       - key: NODE_VERSION
         value: "20"
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
 
 # ── PostgreSQL Database ────────────────────────────────────────────────────
 databases:
