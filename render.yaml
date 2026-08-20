@@ -1,10 +1,12 @@
 services:
+  # ── Backend (FastAPI) ──────────────────────────────────────────────────────
   - type: web
     name: cv-parser-backend
-    env: python
+    runtime: python
+    rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
-    rootDir: backend
+    plan: free
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -12,18 +14,42 @@ services:
           property: connectionString
       - key: SECRET_KEY
         generateValue: true
+      - key: ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 480
+      - key: UPLOAD_DIR
+        value: /tmp/uploads
+      - key: MAX_FILE_SIZE_MB
+        value: 25
+      - key: DEFAULT_AI_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false          # You'll set this manually in the Render dashboard
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OLLAMA_BASE_URL
+        value: http://localhost:11434
+      - key: PYTHON_VERSION
+        value: 3.11.0
 
+  # ── Frontend (React Static Site) ──────────────────────────────────────────
   - type: web
     name: cv-parser-frontend
-    env: static
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
+    runtime: static
     rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    plan: free
     routes:
       - type: rewrite
         source: /*
         destination: /index.html
+    envVars:
+      - key: NODE_VERSION
+        value: 20.0.0
 
+# ── PostgreSQL Database ────────────────────────────────────────────────────
 databases:
   - name: cv-parser-db
     databaseName: cvparser

@@ -1,9 +1,21 @@
 from pydantic_settings import BaseSettings
 from typing import Optional
 
+
 class Settings(BaseSettings):
-    # Database - use async-compatible URL for SQLAlchemy async engine
+    # Database URL — Render injects postgresql://, we auto-upgrade to asyncpg driver
     DATABASE_URL: str = "postgresql+asyncpg://cvparser:cvparser_secret@localhost:5432/cvparser"
+
+    @property
+    def async_database_url(self) -> str:
+        """Ensure the URL always uses the asyncpg driver, even if Render injects a plain postgresql:// URL."""
+        url = self.DATABASE_URL
+        if url.startswith("postgresql://"):
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        elif url.startswith("postgres://"):
+            # Heroku / Render sometimes use postgres:// shorthand
+            url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+        return url
 
     # Security
     SECRET_KEY: str = "supersecretkey-change-in-production-min-32-chars"
@@ -23,5 +35,6 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+
 
 settings = Settings()

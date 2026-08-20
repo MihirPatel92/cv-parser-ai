@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+// In production (Render), VITE_API_URL is set to the backend service URL.
+// In local dev, falls back to localhost:8000.
+const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
 export const apiClient = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: BASE_URL,
 });
 
 apiClient.interceptors.request.use((config) => {
@@ -17,6 +21,7 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
+      localStorage.removeItem('user');
       window.location.href = '/login';
     }
     return Promise.reject(error);
