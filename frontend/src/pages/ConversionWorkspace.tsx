@@ -5,7 +5,7 @@ import { createConversion, getConversion, downloadConversion } from '../api/conv
 import { getAIConfig } from '../api/admin';
 import { FileUpload } from '../components/FileUpload';
 import { Badge } from '../components/Badge';
-import { FileDown, Loader2, ArrowRight } from 'lucide-react';
+import { FileDown, Loader2, ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export const ConversionWorkspace: React.FC = () => {
@@ -16,8 +16,15 @@ export const ConversionWorkspace: React.FC = () => {
   const [outputFormat, setOutputFormat] = useState('docx');
   const [activeConversionId, setActiveConversionId] = useState<string | null>(null);
 
-  const { data: templates } = useQuery({ queryKey: ['templates'], queryFn: getTemplates });
-  const { data: aiConfig } = useQuery({ queryKey: ['aiConfig'], queryFn: getAIConfig });
+  const { data: templates, isLoading: templatesLoading } = useQuery({
+    queryKey: ['templates'],
+    queryFn: getTemplates,
+  });
+
+  const { data: aiConfig } = useQuery({
+    queryKey: ['aiConfig'],
+    queryFn: getAIConfig,
+  });
 
   const { data: conversion, refetch: refetchConversion } = useQuery({
     queryKey: ['conversion', activeConversionId],
@@ -25,13 +32,13 @@ export const ConversionWorkspace: React.FC = () => {
     enabled: !!activeConversionId,
     refetchInterval: (query) => {
       const status = query.state.data?.status;
-      return status === 'pending' || status === 'processing' ? 3000 : false;
-    }
+      return status === 'pending' || status === 'processing' ? 2500 : false;
+    },
   });
 
   React.useEffect(() => {
-    if (aiConfig) {
-      setAiProvider(aiConfig.provider);
+    if (aiConfig?.provider) {
+      setAiProvider(aiConfig.provider as any);
     }
   }, [aiConfig]);
 
@@ -39,18 +46,27 @@ export const ConversionWorkspace: React.FC = () => {
     mutationFn: createConversion,
     onSuccess: (data) => {
       setActiveConversionId(data.id);
-      toast.success('Conversion started');
+      queryClient.invalidateQueries({ queryKey: ['conversions'] });
+      toast.success('Conversion started! Processing CV with AI...');
     },
-    onError: () => toast.error('Failed to start conversion')
+    onError: (err: any) => {
+      console.error('Conversion submission error:', err);
+      const detail = err.response?.data?.detail || 'Failed to start conversion';
+      toast.error(detail);
+    },
   });
 
   const handleConvert = () => {
-    if (!file || !templateId) return toast.error('File and template are required');
+    if (!file) return toast.error('Please upload a source CV (PDF or DOCX)');
+    if (!templateId) return toast.error('Please select a target company template');
+
     const formData = new FormData();
+    formData.append('file', file);
     formData.append('cv_file', file);
     formData.append('template_id', templateId);
     formData.append('ai_provider', aiProvider);
     formData.append('output_format', outputFormat);
+
     convertMutation.mutate(formData);
   };
 
@@ -61,72 +77,110 @@ export const ConversionWorkspace: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `converted_cv.${format}`;
+      a.download = `formatted_cv.${format}`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
+      toast.success(`Downloaded ${format.toUpperCase()}`);
     } catch (e) {
-      toast.error('Download failed');
+      console.error('Download failed:', e);
+      toast.error(`Download failed for ${format.toUpperCase()}`);
     }
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-gray-900">Convert CV</h1>
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Transform & Format CV</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          Upload a candidate CV and select a company template to automatically extract, re-sequence, and format candidate details.
+        </p>
+      </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-8">
+        {/* Step 1 */}
         <div>
-          <h2 className="text-lg font-medium text-gray-900 mb-4">1. Upload Source CV</h2>
+          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold">1</span>
+            Upload Source Candidate CV
+          </h2>
           <FileUpload
-            accept={{ 'application/pdf': ['.pdf'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'] }}
+            accept={{
+              'application/pdf': ['.pdf'],
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+            }}
             onDrop={(files) => setFile(files[0])}
             file={file}
-            label="Drop CV (PDF/DOCX) here"
+            label="Drop candidate CV (PDF / DOCX) here"
           />
         </div>
 
+        {/* Step 2 & 3 */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <h2 className="text-lg font-medium text-gray-900 mb-4">2. Select Template</h2>
+            <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold">2</span>
+              Select Target Template
+            </h2>
             <select
               value={templateId}
-              onChange={e => setTemplateId(e.target.value)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 bg-white focus:ring-2 focus:ring-primary-500 outline-none"
+              onChange={(e) => setTemplateId(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
             >
-              <option value="">-- Choose a template --</option>
-              {templates?.map(t => (
-                <option key={t.id} value={t.id}>{t.name} ({t.company_name})</option>
+              <option value="">-- Choose a company template --</option>
+              {templates?.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} {t.company_name ? `(${t.company_name})` : ''} [{t.file_type.toUpperCase()}]
+                </option>
               ))}
             </select>
+            {templates?.length === 0 && !templatesLoading && (
+              <p className="text-xs text-amber-600 mt-1.5">
+                No templates found. Please upload a template in the Template Library first.
+              </p>
+            )}
           </div>
 
           <div>
-            <h2 className="text-lg font-medium text-gray-900 mb-4">3. AI Provider</h2>
+            <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold">3</span>
+              AI Engine & Provider
+            </h2>
             <select
               value={aiProvider}
-              onChange={e => setAiProvider(e.target.value as any)}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 bg-white focus:ring-2 focus:ring-primary-500 outline-none"
+              onChange={(e) => setAiProvider(e.target.value as any)}
+              className="w-full border border-gray-300 rounded-lg px-4 py-2.5 bg-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
             >
-              <option value="gemini">Google Gemini</option>
-              <option value="openai">OpenAI</option>
-              <option value="ollama">Local Ollama</option>
+              <option value="gemini">Google Gemini (Recommended - 1.5 Flash)</option>
+              <option value="openai">OpenAI (GPT-4o Mini)</option>
+              <option value="ollama">Local Ollama (DeepSeek / LLaMA)</option>
             </select>
           </div>
         </div>
 
+        {/* Step 4 */}
         <div>
-          <h2 className="text-lg font-medium text-gray-900 mb-4">4. Output Format</h2>
-          <div className="flex gap-4">
-            {['docx', 'pdf', 'both'].map(fmt => (
-              <label key={fmt} className="flex items-center space-x-2">
+          <h2 className="text-base font-semibold text-gray-900 mb-3 flex items-center gap-2">
+            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 text-xs font-bold">4</span>
+            Desired Output Format
+          </h2>
+          <div className="flex gap-6">
+            {[
+              { id: 'docx', label: 'DOCX (Word Document)' },
+              { id: 'pdf', label: 'PDF (Print Ready)' },
+              { id: 'both', label: 'Both (DOCX + PDF)' },
+            ].map((fmt) => (
+              <label key={fmt.id} className="flex items-center space-x-2 cursor-pointer">
                 <input
                   type="radio"
-                  name="format"
-                  value={fmt}
-                  checked={outputFormat === fmt}
-                  onChange={e => setOutputFormat(e.target.value)}
-                  className="text-primary-600 focus:ring-primary-500 h-4 w-4"
+                  name="output_format"
+                  value={fmt.id}
+                  checked={outputFormat === fmt.id}
+                  onChange={(e) => setOutputFormat(e.target.value)}
+                  className="text-indigo-600 focus:ring-indigo-500 h-4 w-4"
                 />
-                <span className="uppercase text-sm font-medium text-gray-700">{fmt}</span>
+                <span className="text-sm font-medium text-gray-700">{fmt.label}</span>
               </label>
             ))}
           </div>
@@ -136,41 +190,88 @@ export const ConversionWorkspace: React.FC = () => {
           <button
             onClick={handleConvert}
             disabled={!file || !templateId || convertMutation.isPending}
-            className="flex items-center px-6 py-3 bg-primary-600 text-white rounded-lg font-medium hover:bg-primary-700 transition-colors disabled:opacity-50"
+            className="flex items-center px-6 py-3 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
-            {convertMutation.isPending ? <Loader2 className="animate-spin h-5 w-5 mr-2" /> : <ArrowRight className="h-5 w-5 mr-2" />}
-            Start Conversion
+            {convertMutation.isPending ? (
+              <>
+                <Loader2 className="animate-spin h-5 w-5 mr-2" />
+                Starting Conversion...
+              </>
+            ) : (
+              <>
+                <ArrowRight className="h-5 w-5 mr-2" />
+                Start AI Conversion
+              </>
+            )}
           </button>
         </div>
       </div>
 
+      {/* Real-time Status Card */}
       {conversion && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Conversion Result</h2>
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
+          <h2 className="text-base font-semibold text-gray-900">Conversion Status</h2>
+
+          <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <p className="font-medium text-gray-900">{conversion.source_cv_filename}</p>
-              <p className="text-sm text-gray-500">Template: {conversion.template_name}</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Target Template: <span className="font-medium">{conversion.template_name || 'Standard'}</span> • Provider: <span className="capitalize">{conversion.ai_provider}</span>
+              </p>
+              {conversion.processing_time_seconds && (
+                <p className="text-xs text-gray-400 mt-0.5">
+                  Processed in {conversion.processing_time_seconds}s
+                </p>
+              )}
             </div>
-            <div className="flex items-center gap-4">
+
+            <div className="flex items-center gap-3">
               <Badge status={conversion.status} />
-              
+
+              {(conversion.status === 'pending' || conversion.status === 'processing') && (
+                <div className="flex items-center text-xs text-indigo-600 font-medium animate-pulse">
+                  <Loader2 className="animate-spin h-4 w-4 mr-1" />
+                  AI parsing in progress...
+                </div>
+              )}
+
               {conversion.status === 'completed' && (
                 <div className="flex gap-2">
-                  {(conversion.output_format === 'docx' || conversion.output_format === 'both') && (
-                    <button onClick={() => handleDownload('docx')} className="p-2 text-primary-600 hover:bg-primary-50 rounded bg-white border">
-                      <FileDown className="h-5 w-5" /> DOCX
+                  {(conversion.output_format === 'docx' || conversion.output_format === 'both' || conversion.has_docx) && (
+                    <button
+                      onClick={() => handleDownload('docx')}
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md hover:bg-indigo-100 transition-colors"
+                    >
+                      <FileDown className="h-4 w-4 mr-1" /> Download DOCX
                     </button>
                   )}
-                  {(conversion.output_format === 'pdf' || conversion.output_format === 'both') && (
-                    <button onClick={() => handleDownload('pdf')} className="p-2 text-red-600 hover:bg-red-50 rounded bg-white border">
-                      <FileDown className="h-5 w-5" /> PDF
+                  {(conversion.output_format === 'pdf' || conversion.output_format === 'both' || conversion.has_pdf) && (
+                    <button
+                      onClick={() => handleDownload('pdf')}
+                      className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-700 bg-red-50 border border-red-200 rounded-md hover:bg-red-100 transition-colors"
+                    >
+                      <FileDown className="h-4 w-4 mr-1" /> Download PDF
                     </button>
                   )}
                 </div>
               )}
             </div>
           </div>
+
+          {conversion.status === 'failed' && (
+            <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start space-x-3 text-red-700 text-sm">
+              <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-red-500" />
+              <div>
+                <p className="font-medium">Conversion Failed</p>
+                <p className="text-xs text-red-600 mt-1">
+                  {conversion.error_message || 'An unexpected error occurred during AI processing.'}
+                </p>
+                <p className="text-xs text-red-500 mt-2">
+                  Tip: Ensure your Gemini API Key is configured under <strong>AI Config</strong> and that the target template is valid.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

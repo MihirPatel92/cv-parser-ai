@@ -7,8 +7,8 @@ export const getConversions = async (): Promise<Conversion[]> => {
 };
 
 export const createConversion = async (formData: FormData): Promise<Conversion> => {
-  const response = await apiClient.post('/conversions', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' }
+  const response = await apiClient.post('/conversions/', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
   });
   return response.data;
 };
@@ -19,8 +19,8 @@ export const getConversion = async (id: string): Promise<Conversion> => {
 };
 
 export const downloadConversion = async (id: string, format: string): Promise<Blob> => {
-  const response = await apiClient.get(`/conversions/${id}/download?format=${format}`, {
-    responseType: 'blob'
+  const response = await apiClient.get(`/conversions/${id}/download/${format}`, {
+    responseType: 'blob',
   });
   return response.data;
 };
