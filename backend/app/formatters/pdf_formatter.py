@@ -9,10 +9,10 @@ class StructuredCVPDF(FPDF):
         pass
 
     def footer(self):
-        self.set_y(-15)
+        self.set_y(-12)
         self.set_font("helvetica", "I", 8)
         self.set_text_color(160, 160, 160)
-        self.cell(0, 10, f"Page {self.page_no()}", align="C")
+        self.cell(self.epw, 8, f"Page {self.page_no()}", align="C")
 
 
 def sanitize_text(text: str) -> str:
@@ -38,6 +38,7 @@ def sanitize_text(text: str) -> str:
         "▸": "*",
         "●": "*",
         "\t": "    ",
+        "\r": "",
     }
     for orig, repl in replacements.items():
         text = text.replace(orig, repl)
@@ -56,26 +57,30 @@ def convert_docx_to_pdf(docx_path: str, output_path: str) -> str:
     pdf.set_margins(15, 15, 15)
     pdf.add_page()
 
+    epw = pdf.epw # Effective page width (width minus left and right margins)
     is_first_line = True
 
     for line in lines:
         cleaned = sanitize_text(line)
         if not cleaned:
-            pdf.ln(2.5)
+            pdf.ln(2)
             continue
+
+        # Always reset x to left margin before printing each block
+        pdf.set_x(pdf.l_margin)
 
         # Candidate Name (Header)
         if is_first_line and len(cleaned) < 60:
-            pdf.set_font("helvetica", "B", 18)
+            pdf.set_font("helvetica", "B", 16)
             pdf.set_text_color(30, 41, 59) # Slate 800
-            pdf.multi_cell(0, 8, cleaned, align="L")
+            pdf.multi_cell(epw, 7, cleaned, align="L")
             pdf.ln(1)
             is_first_line = False
             continue
 
         is_first_line = False
 
-        # Section Headers (ALL CAPS or short title)
+        # Section Headers (ALL CAPS or known keywords)
         if (cleaned.isupper() and len(cleaned) < 50) or cleaned in (
             "PROFESSIONAL SUMMARY",
             "TECHNICAL SKILLS",
@@ -87,29 +92,27 @@ def convert_docx_to_pdf(docx_path: str, output_path: str) -> str:
             "PROJECTS",
             "CORE COMPETENCIES",
         ):
-            pdf.ln(3.5)
-            pdf.set_font("helvetica", "B", 11)
+            pdf.ln(3)
+            pdf.set_font("helvetica", "B", 10.5)
             pdf.set_text_color(79, 70, 229) # Indigo 600
-            # Modern fpdf2 cell call with border
-            pdf.cell(0, 6.5, cleaned, border="B", align="L")
-            pdf.ln(8)
+            pdf.multi_cell(epw, 6, cleaned, border="B", align="L")
+            pdf.ln(2)
         # Job Titles / Subheadings
         elif " | " in cleaned and len(cleaned) < 100:
-            pdf.set_font("helvetica", "B", 10)
+            pdf.set_font("helvetica", "B", 9.5)
             pdf.set_text_color(30, 41, 59)
-            pdf.multi_cell(0, 5.5, cleaned, align="L")
-            pdf.ln(1)
+            pdf.multi_cell(epw, 5, cleaned, align="L")
         # Bullet points
         elif cleaned.startswith("*") or cleaned.startswith("-"):
-            pdf.set_font("helvetica", "", 9.5)
+            pdf.set_font("helvetica", "", 9)
             pdf.set_text_color(71, 85, 105) # Slate 600
             bullet_content = cleaned.lstrip("*- ")
-            pdf.multi_cell(0, 5, f"  *  {bullet_content}", align="L")
+            pdf.multi_cell(epw, 4.5, f"  *  {bullet_content}", align="L")
         # Regular text / paragraphs
         else:
-            pdf.set_font("helvetica", "", 9.5)
+            pdf.set_font("helvetica", "", 9)
             pdf.set_text_color(51, 65, 85)
-            pdf.multi_cell(0, 5, cleaned, align="L")
+            pdf.multi_cell(epw, 4.5, cleaned, align="L")
 
     # Ensure parent output directory exists
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
