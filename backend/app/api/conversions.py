@@ -436,12 +436,8 @@ async def download_output(
                     media_type="application/pdf",
                 )
         except Exception as e:
-            print(f"On-demand PDF generation note: {e}")
-        return FileResponse(
-            conversion.output_docx_path,
-            filename=f"formatted_{base_name}.docx",
-            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        )
+            print(f"On-demand PDF generation error: {e}")
+            raise HTTPException(status_code=500, detail=f"PDF generation failed: {e}")
     else:
         raise HTTPException(
             status_code=404,
