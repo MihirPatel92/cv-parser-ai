@@ -1,8 +1,7 @@
 import axios from 'axios';
 
-// In production (Render), VITE_API_URL is set to the backend service URL.
-// In local dev, falls back to localhost:8000.
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// Live production Render backend URL by default, or VITE_API_URL if specified
+const BASE_URL = import.meta.env.VITE_API_URL || 'https://cv-parser-backend-wy3l.onrender.com';
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,

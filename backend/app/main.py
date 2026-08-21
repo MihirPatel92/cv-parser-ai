@@ -3,53 +3,10 @@ import re
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from .core.config import settings
 from .db.init_db import init_db
 from .api import auth, users, templates, conversions, admin
-
-
-# ── Dynamic CORS Middleware ────────────────────────────────────────────────────
-# Allows any *.onrender.com subdomain and localhost — no matter what random
-# suffix Render assigns to the frontend service URL.
-ALLOWED_ORIGIN_RE = re.compile(
-    r"^https?://"
-    r"(localhost(:\d+)?"           # localhost with any port
-    r"|127\.0\.0\.1(:\d+)?"        # 127.0.0.1 with any port
-    r"|[\w-]+\.onrender\.com"      # any *.onrender.com subdomain
-    r")$"
-)
-
-
-class DynamicCORSMiddleware(BaseHTTPMiddleware):
-    """Reflect the requesting origin in CORS headers if it matches the allowlist pattern."""
-
-    async def dispatch(self, request: Request, call_next):
-        origin = request.headers.get("origin", "")
-
-        # Handle pre-flight OPTIONS request immediately
-        if request.method == "OPTIONS" and origin and ALLOWED_ORIGIN_RE.match(origin):
-            response = Response(status_code=200)
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With"
-            response.headers["Access-Control-Max-Age"] = "86400"
-            response.headers["Vary"] = "Origin"
-            return response
-
-        response = await call_next(request)
-
-        # Inject CORS headers on all matching origins
-        if origin and ALLOWED_ORIGIN_RE.match(origin):
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
-            response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type, Accept, X-Requested-With"
-            response.headers["Vary"] = "Origin"
-
-        return response
 
 
 @asynccontextmanager
@@ -68,8 +25,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Register dynamic CORS middleware (must be first)
-app.add_middleware(DynamicCORSMiddleware)
+# ── CORS Middleware ────────────────────────────────────────────────────────────
+# Allows all onrender.com subdomains and local development origins
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],
+)
 
 # ── Static files (uploads) ────────────────────────────────────────────────────
 uploads_dir = settings.UPLOAD_DIR

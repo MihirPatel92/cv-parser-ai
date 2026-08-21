@@ -47,7 +47,7 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        sync: false
+        value: https://cv-parser-backend-wy3l.onrender.com
 
 # ── PostgreSQL Database ────────────────────────────────────────────────────
 databases:
