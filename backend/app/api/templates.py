@@ -1,5 +1,6 @@
 import os
 import uuid
+import base64
 import aiofiles
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +11,29 @@ from ..core.config import settings
 from ..parsers.docx_parser import extract_placeholders_from_docx
 
 router = APIRouter()
+
+
+def ensure_template_on_disk(template: CVTemplate) -> str:
+    """Ensure the template file exists on disk, reconstructing from DB if container restarted."""
+    if template.file_path and os.path.exists(template.file_path):
+        return template.file_path
+
+    # Reconstruct from base64 stored in PostgreSQL
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "templates"), exist_ok=True)
+    filename = f"{template.id}.{template.file_type}"
+    filepath = os.path.join(settings.UPLOAD_DIR, "templates", filename)
+
+    if template.file_data:
+        try:
+            raw_bytes = base64.b64decode(template.file_data)
+            with open(filepath, "wb") as f:
+                f.write(raw_bytes)
+            template.file_path = filepath
+            return filepath
+        except Exception as e:
+            print(f"Failed to reconstruct template file from DB: {e}")
+
+    return template.file_path
 
 
 def template_to_dict(t: CVTemplate) -> dict:
@@ -53,11 +77,14 @@ async def upload_template(
 
     ext = file.filename.split(".")[-1].lower()
     filename = f"{uuid.uuid4()}.{ext}"
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "templates"), exist_ok=True)
     filepath = os.path.join(settings.UPLOAD_DIR, "templates", filename)
 
     content = await file.read()
     async with aiofiles.open(filepath, "wb") as out_file:
         await out_file.write(content)
+
+    b64_content = base64.b64encode(content).decode("utf-8")
 
     detected_placeholders = []
     placeholder_type = "none"
@@ -74,6 +101,7 @@ async def upload_template(
         file_name=file.filename,
         file_type=ext,
         file_size_bytes=len(content),
+        file_data=b64_content,
         placeholder_type=placeholder_type,
         detected_placeholders=detected_placeholders,
         uploaded_by=current_user.id,
@@ -99,6 +127,7 @@ async def get_template(
     template = result.scalars().first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+    ensure_template_on_disk(template)
     return template_to_dict(template)
 
 
@@ -117,6 +146,8 @@ async def get_template_placeholders(
     template = result.scalars().first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+
+    ensure_template_on_disk(template)
 
     if template.file_type != "docx":
         return {"placeholders": []}

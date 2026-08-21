@@ -42,6 +42,7 @@ class CVTemplate(Base):
     file_name = Column(String(255), nullable=False, default="template.docx")
     file_type = Column(String(10), nullable=False)  # 'docx' or 'pdf'
     file_size_bytes = Column(Integer, nullable=True)
+    file_data = Column(Text, nullable=True)  # Base64 encoded file content for container persistence
     placeholder_type = Column(String(20), nullable=False, default="auto_detected")  # auto_detected | none
     detected_placeholders = Column(JSON, default=list)
     uploaded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -62,8 +63,11 @@ class Conversion(Base):
     source_cv_path = Column(String(500), nullable=False)
     source_cv_filename = Column(String(255), nullable=False)
     source_cv_file_type = Column(String(10), nullable=False, default="pdf")
+    source_cv_data = Column(Text, nullable=True)  # Base64 encoded source CV
     output_docx_path = Column(String(500), nullable=True)
+    output_docx_data = Column(Text, nullable=True)  # Base64 encoded output DOCX
     output_pdf_path = Column(String(500), nullable=True)
+    output_pdf_data = Column(Text, nullable=True)  # Base64 encoded output PDF
     output_format = Column(String(10), nullable=False, default="both")  # docx | pdf | both
     status = Column(String(20), default="pending")  # pending, processing, completed, failed
     ai_provider = Column(String(20), nullable=False, default="gemini")

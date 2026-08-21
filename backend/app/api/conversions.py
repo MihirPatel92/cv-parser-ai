@@ -1,6 +1,7 @@
 import os
 import uuid
 import time
+import base64
 import asyncio
 import aiofiles
 from fastapi import (
@@ -28,8 +29,48 @@ from ..parsers.pdf_parser import extract_text_from_pdf
 from ..parsers.docx_parser import extract_text_from_docx, extract_placeholders_from_docx
 from ..formatters.docx_formatter import DocxFormatter
 from ..formatters.pdf_formatter import convert_docx_to_pdf
+from .templates import ensure_template_on_disk
 
 router = APIRouter()
+
+
+def ensure_conversion_files_on_disk(conversion: Conversion):
+    """Restore CV or output files to disk from PostgreSQL base64 data if container was restarted."""
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "cvs"), exist_ok=True)
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "outputs"), exist_ok=True)
+
+    # Reconstruct source CV
+    if conversion.source_cv_data and (not conversion.source_cv_path or not os.path.exists(conversion.source_cv_path)):
+        try:
+            cv_bytes = base64.b64decode(conversion.source_cv_data)
+            cv_path = os.path.join(settings.UPLOAD_DIR, "cvs", f"{conversion.id}.{conversion.source_cv_file_type}")
+            with open(cv_path, "wb") as f:
+                f.write(cv_bytes)
+            conversion.source_cv_path = cv_path
+        except Exception as e:
+            print(f"Error restoring source CV to disk: {e}")
+
+    # Reconstruct output DOCX
+    if conversion.output_docx_data and (not conversion.output_docx_path or not os.path.exists(conversion.output_docx_path)):
+        try:
+            docx_bytes = base64.b64decode(conversion.output_docx_data)
+            docx_path = os.path.join(settings.UPLOAD_DIR, "outputs", f"{conversion.id}.docx")
+            with open(docx_path, "wb") as f:
+                f.write(docx_bytes)
+            conversion.output_docx_path = docx_path
+        except Exception as e:
+            print(f"Error restoring output DOCX to disk: {e}")
+
+    # Reconstruct output PDF
+    if conversion.output_pdf_data and (not conversion.output_pdf_path or not os.path.exists(conversion.output_pdf_path)):
+        try:
+            pdf_bytes = base64.b64decode(conversion.output_pdf_data)
+            pdf_path = os.path.join(settings.UPLOAD_DIR, "outputs", f"{conversion.id}.pdf")
+            with open(pdf_path, "wb") as f:
+                f.write(pdf_bytes)
+            conversion.output_pdf_path = pdf_path
+        except Exception as e:
+            print(f"Error restoring output PDF to disk: {e}")
 
 
 async def process_conversion(conversion_id: str, config: AIModelConfig):
@@ -50,8 +91,14 @@ async def process_conversion(conversion_id: str, config: AIModelConfig):
             return
 
         try:
-            # ── Step 1: Parse the uploaded CV ────────────────────────────────
+            # ── Ensure source CV is on disk ──────────────────────────────────
+            ensure_conversion_files_on_disk(conversion)
             cv_path = conversion.source_cv_path
+
+            if not cv_path or not os.path.exists(cv_path):
+                raise ValueError("Source CV file could not be found or restored.")
+
+            # ── Step 1: Parse the uploaded CV ────────────────────────────────
             if cv_path.lower().endswith(".pdf"):
                 cv_text = extract_text_from_pdf(cv_path)
             else:
@@ -68,7 +115,7 @@ async def process_conversion(conversion_id: str, config: AIModelConfig):
             conversion.extracted_cv_data = cv_data
             conversion.ai_model_used = config.model_name
 
-            # ── Step 3: Fetch Template ────────────────────────────────────────
+            # ── Step 3: Fetch & Verify Template ───────────────────────────────
             template = None
             if conversion.template_id:
                 template_result = await db.execute(
@@ -76,50 +123,51 @@ async def process_conversion(conversion_id: str, config: AIModelConfig):
                 )
                 template = template_result.scalars().first()
 
-            if not template:
-                raise ValueError("Target CV Template not found in database.")
+            if template:
+                ensure_template_on_disk(template)
 
-            # ── Step 4: Format output ─────────────────────────────────────────
+            # ── Step 4: Format output DOCX ────────────────────────────────────
             formatter = DocxFormatter()
+            os.makedirs(os.path.join(settings.UPLOAD_DIR, "outputs"), exist_ok=True)
             out_filename = str(uuid.uuid4())
             out_docx_path = os.path.join(
                 settings.UPLOAD_DIR, "outputs", f"{out_filename}.docx"
             )
             out_pdf_path = None
 
-            if template.file_type.lower() == "docx":
+            if template and template.file_path and os.path.exists(template.file_path) and template.file_type.lower() == "docx":
                 placeholders = extract_placeholders_from_docx(template.file_path)
 
                 if placeholders:
-                    # Template has {{placeholders}} — map CV data directly to them
+                    # Template has explicit {{placeholders}} — map CV data directly to them
                     mapping = await orchestrator.map_to_placeholders(placeholders, cv_data)
                     conversion.placeholder_mapping = mapping
                     formatter.fill_placeholders(template.file_path, mapping, out_docx_path)
                 else:
-                    # Template without placeholders — AI mirrors the template structure
-                    template_text = extract_text_from_docx(template.file_path)
-                    structure = await orchestrator.analyze_template_structure(template_text)
-                    section_data = await orchestrator.freeform_map(
-                        str(structure), cv_data
-                    )
-                    formatter.freeform_fill(template.file_path, section_data, out_docx_path)
+                    # DOCX without placeholders: generate beautifully structured CV
+                    formatter.create_structured_cv(cv_data, out_docx_path)
             else:
-                # PDF template: extract structure and mirror
-                template_text = extract_text_from_pdf(template.file_path)
-                structure = await orchestrator.analyze_template_structure(template_text)
-                section_data = await orchestrator.freeform_map(str(structure), cv_data)
-                formatter.freeform_fill(None, section_data, out_docx_path)
+                # PDF Template or generic: generate high-quality structured DOCX
+                formatter.create_structured_cv(cv_data, out_docx_path)
+
+            # Save generated DOCX to DB as base64 for persistent cloud storage
+            if os.path.exists(out_docx_path):
+                with open(out_docx_path, "rb") as f:
+                    conversion.output_docx_data = base64.b64encode(f.read()).decode("utf-8")
 
             # ── Step 5: Convert to PDF if requested ──────────────────────────
             output_format = conversion.output_format.lower()
-            if output_format in ("pdf", "both"):
+            if output_format in ("pdf", "both") and os.path.exists(out_docx_path):
                 out_pdf_path = os.path.join(
                     settings.UPLOAD_DIR, "outputs", f"{out_filename}.pdf"
                 )
                 try:
                     convert_docx_to_pdf(out_docx_path, out_pdf_path)
+                    if os.path.exists(out_pdf_path):
+                        with open(out_pdf_path, "rb") as f:
+                            conversion.output_pdf_data = base64.b64encode(f.read()).decode("utf-8")
                 except Exception as pdf_err:
-                    print(f"⚠️ PDF generation fallback note: {pdf_err}")
+                    print(f"⚠️ PDF conversion note: {pdf_err}")
                     out_pdf_path = None
 
             # ── Step 6: Save results ──────────────────────────────────────────
@@ -154,7 +202,6 @@ async def create_conversion(
     ai_config: AIModelConfig = Depends(get_ai_config),
 ):
     """Upload a CV and trigger AI conversion against a selected template."""
-    # Handle either field name: 'file' or 'cv_file'
     uploaded_file = file or cv_file
     if not uploaded_file:
         raise HTTPException(
@@ -162,7 +209,6 @@ async def create_conversion(
             detail="CV file is required. Upload a file with parameter 'file' or 'cv_file'.",
         )
 
-    # Validate file type
     filename = uploaded_file.filename or "cv.pdf"
     filename_lower = filename.lower()
     if not (filename_lower.endswith(".docx") or filename_lower.endswith(".pdf")):
@@ -170,7 +216,6 @@ async def create_conversion(
             status_code=400, detail="Only DOCX and PDF files are accepted."
         )
 
-    # Validate file size
     content = await uploaded_file.read()
     max_bytes = settings.MAX_FILE_SIZE_MB * 1024 * 1024
     if len(content) > max_bytes:
@@ -178,25 +223,25 @@ async def create_conversion(
             status_code=413, detail=f"File exceeds {settings.MAX_FILE_SIZE_MB}MB limit."
         )
 
-    # Validate output_format
     fmt = output_format.lower()
     if fmt not in ("docx", "pdf", "both"):
         fmt = "docx"
 
-    # Save uploaded CV
+    # Save uploaded CV to disk and encode to base64
     ext = filename_lower.split(".")[-1]
     saved_name = f"{uuid.uuid4()}.{ext}"
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "cvs"), exist_ok=True)
     filepath = os.path.join(settings.UPLOAD_DIR, "cvs", saved_name)
     async with aiofiles.open(filepath, "wb") as f:
         await f.write(content)
 
-    # Parse template UUID
+    b64_cv = base64.b64encode(content).decode("utf-8")
+
     try:
         tmpl_uuid = uuid.UUID(template_id)
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Invalid template ID format")
 
-    # Override config provider if user selected a different one
     if ai_provider != ai_config.provider:
         effective_config = AIModelConfig(
             provider=ai_provider,
@@ -210,13 +255,13 @@ async def create_conversion(
     else:
         effective_config = ai_config
 
-    # Create conversion record
     conversion = Conversion(
         recruiter_id=current_user.id,
         template_id=tmpl_uuid,
         source_cv_path=filepath,
         source_cv_filename=filename,
         source_cv_file_type=ext,
+        source_cv_data=b64_cv,
         output_format=fmt,
         ai_provider=ai_provider,
         status="processing",
@@ -225,7 +270,6 @@ async def create_conversion(
     await db.commit()
     await db.refresh(conversion)
 
-    # Launch background processing with isolated SessionLocal
     background_tasks.add_task(
         process_conversion, str(conversion.id), effective_config
     )
@@ -238,14 +282,14 @@ async def create_conversion(
 
 
 def conversion_to_dict(c: Conversion, template_name: str = "", recruiter_name: str = "") -> dict:
-    has_docx = bool(c.output_docx_path and os.path.exists(c.output_docx_path))
-    has_pdf = bool(c.output_pdf_path and os.path.exists(c.output_pdf_path))
+    has_docx = bool(c.output_docx_data or (c.output_docx_path and os.path.exists(c.output_docx_path)))
+    has_pdf = bool(c.output_pdf_data or (c.output_pdf_path and os.path.exists(c.output_pdf_path)))
     return {
         "id": str(c.id),
         "recruiter_id": str(c.recruiter_id) if c.recruiter_id else None,
         "recruiter_name": recruiter_name or (c.recruiter.full_name if c.recruiter else "Admin"),
         "template_id": str(c.template_id) if c.template_id else None,
-        "template_name": template_name or (c.template.name if c.template else "Default Template"),
+        "template_name": template_name or (c.template.name if c.template else "Company Template"),
         "source_cv_filename": c.source_cv_filename,
         "status": c.status,
         "ai_provider": c.ai_provider,
@@ -265,7 +309,6 @@ async def list_conversions(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List conversions. Admins see all; recruiters see their own."""
     user_role_str = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     if user_role_str in ["super_admin", "admin"]:
         result = await db.execute(
@@ -279,7 +322,6 @@ async def list_conversions(
         )
     conversions = result.scalars().all()
 
-    # Pre-fetch template names
     template_ids = [c.template_id for c in conversions if c.template_id]
     templates_map = {}
     if template_ids:
@@ -361,6 +403,8 @@ async def download_output(
             detail=f"Conversion is not completed (current status: {conversion.status}). Error: {conversion.error_message or 'None'}",
         )
 
+    # Ensure output files exist on disk (rebuild from base64 if container restarted)
+    ensure_conversion_files_on_disk(conversion)
     base_name = conversion.source_cv_filename.rsplit(".", 1)[0]
 
     if requested_format == "docx" and conversion.output_docx_path and os.path.exists(conversion.output_docx_path):
@@ -376,7 +420,6 @@ async def download_output(
             media_type="application/pdf",
         )
     elif requested_format == "pdf" and conversion.output_docx_path and os.path.exists(conversion.output_docx_path):
-        # Fallback: DOCX exists, return DOCX if PDF couldn't be generated
         return FileResponse(
             conversion.output_docx_path,
             filename=f"formatted_{base_name}.docx",
