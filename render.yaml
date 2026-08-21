@@ -32,6 +32,8 @@ services:
         value: http://localhost:11434
       - key: FRONTEND_URL
         value: https://cv-parser-frontend.onrender.com
+      - key: PYTHON_VERSION
+        value: "3.11.0"
 
   # ── Frontend (React Static Site) ──────────────────────────────────────────
   - type: web
