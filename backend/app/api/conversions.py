@@ -422,6 +422,21 @@ async def download_output(
             media_type="application/pdf",
         )
     elif requested_format == "pdf" and conversion.output_docx_path and os.path.exists(conversion.output_docx_path):
+        out_pdf_path = conversion.output_docx_path.rsplit(".", 1)[0] + ".pdf"
+        try:
+            convert_docx_to_pdf(conversion.output_docx_path, out_pdf_path)
+            if os.path.exists(out_pdf_path):
+                conversion.output_pdf_path = out_pdf_path
+                with open(out_pdf_path, "rb") as f:
+                    conversion.output_pdf_data = base64.b64encode(f.read()).decode("utf-8")
+                await db.commit()
+                return FileResponse(
+                    out_pdf_path,
+                    filename=f"formatted_{base_name}.pdf",
+                    media_type="application/pdf",
+                )
+        except Exception as e:
+            print(f"On-demand PDF generation note: {e}")
         return FileResponse(
             conversion.output_docx_path,
             filename=f"formatted_{base_name}.docx",
