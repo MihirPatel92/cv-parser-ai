@@ -1,12 +1,32 @@
 import os
-import re
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 from contextlib import asynccontextmanager
 from .core.config import settings
 from .db.init_db import init_db
 from .api import auth, users, templates, conversions, admin
+
+
+class EnsureCORSHeadersMiddleware(BaseHTTPMiddleware):
+    """Guarantees CORS headers on EVERY response, including redirects (307/308) and errors."""
+
+    async def dispatch(self, request: Request, call_next):
+        origin = request.headers.get("origin", "*")
+        if request.method == "OPTIONS":
+            response = Response(status_code=200)
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Max-Age"] = "86400"
+            return response
+
+        response = await call_next(request)
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS, PATCH"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
 
 
 @asynccontextmanager
@@ -23,10 +43,13 @@ app = FastAPI(
     description="AI-powered CV transformation engine with multi-LLM support",
     version="1.0.0",
     lifespan=lifespan,
+    redirect_slashes=False, # Disable auto-redirecting slashes to prevent CORS redirect drops
 )
 
-# ── CORS Middleware ────────────────────────────────────────────────────────────
-# Allows all onrender.com subdomains and local development origins
+# Custom CORS middleware to guarantee headers on all response codes
+app.add_middleware(EnsureCORSHeadersMiddleware)
+
+# Standard CORSMiddleware as second layer
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

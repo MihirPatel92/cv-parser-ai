@@ -18,7 +18,6 @@ def ensure_template_on_disk(template: CVTemplate) -> str:
     if template.file_path and os.path.exists(template.file_path):
         return template.file_path
 
-    # Reconstruct from base64 stored in PostgreSQL
     os.makedirs(os.path.join(settings.UPLOAD_DIR, "templates"), exist_ok=True)
     filename = f"{template.id}.{template.file_type}"
     filepath = os.path.join(settings.UPLOAD_DIR, "templates", filename)
@@ -53,6 +52,7 @@ def template_to_dict(t: CVTemplate) -> dict:
     }
 
 
+@router.get("")
 @router.get("/")
 async def list_templates(
     db: AsyncSession = Depends(get_db),
@@ -63,6 +63,7 @@ async def list_templates(
     return [template_to_dict(t) for t in templates]
 
 
+@router.post("")
 @router.post("/")
 async def upload_template(
     name: str = Form(...),

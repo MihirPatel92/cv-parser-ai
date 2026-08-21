@@ -189,6 +189,7 @@ async def process_conversion(conversion_id: str, config: AIModelConfig):
             print(f"❌ Conversion {conversion_id} failed: {e}")
 
 
+@router.post("")
 @router.post("/")
 async def create_conversion(
     background_tasks: BackgroundTasks,
@@ -304,6 +305,7 @@ def conversion_to_dict(c: Conversion, template_name: str = "", recruiter_name: s
     }
 
 
+@router.get("")
 @router.get("/")
 async def list_conversions(
     db: AsyncSession = Depends(get_db),

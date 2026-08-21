@@ -45,6 +45,7 @@ def user_to_dict(user: User) -> dict:
     }
 
 
+@router.get("", response_model=List[UserResponse])
 @router.get("/", response_model=List[UserResponse])
 async def list_users(
     current_user: User = Depends(require_role(["super_admin", "admin"])),
@@ -58,6 +59,7 @@ async def list_users(
     return [user_to_dict(u) for u in users]
 
 
+@router.post("", response_model=UserResponse)
 @router.post("/", response_model=UserResponse)
 async def create_user(
     user: UserCreate,
