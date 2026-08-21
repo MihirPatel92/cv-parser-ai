@@ -11,11 +11,33 @@ from ..parsers.docx_parser import extract_placeholders_from_docx
 
 router = APIRouter()
 
+
+def template_to_dict(t: CVTemplate) -> dict:
+    return {
+        "id": str(t.id),
+        "name": t.name,
+        "description": t.description,
+        "company_name": t.company_name,
+        "file_path": t.file_path,
+        "file_name": t.file_name,
+        "file_type": t.file_type,
+        "file_size_bytes": t.file_size_bytes,
+        "placeholder_type": t.placeholder_type,
+        "detected_placeholders": t.detected_placeholders or [],
+        "uploaded_by": str(t.uploaded_by) if t.uploaded_by else None,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+    }
+
+
 @router.get("/")
-async def list_templates(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def list_templates(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = await db.execute(select(CVTemplate))
     templates = result.scalars().all()
-    return templates
+    return [template_to_dict(t) for t in templates]
+
 
 @router.post("/")
 async def upload_template(
@@ -24,64 +46,106 @@ async def upload_template(
     company_name: str = Form(""),
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    if not file.filename.endswith(('.docx', '.pdf')):
+    if not file.filename.lower().endswith((".docx", ".pdf")):
         raise HTTPException(status_code=400, detail="Only DOCX and PDF files are allowed")
-    
-    ext = file.filename.split('.')[-1]
+
+    ext = file.filename.split(".")[-1].lower()
     filename = f"{uuid.uuid4()}.{ext}"
     filepath = os.path.join(settings.UPLOAD_DIR, "templates", filename)
-    
-    async with aiofiles.open(filepath, 'wb') as out_file:
-        content = await file.read()
+
+    content = await file.read()
+    async with aiofiles.open(filepath, "wb") as out_file:
         await out_file.write(content)
-        
-    placeholder_type = "manual"
-    if ext == 'docx':
-        placeholders = extract_placeholders_from_docx(filepath)
-        if placeholders:
-            placeholder_type = "manual" # Meaning it has explicit {{}} placeholders
-        else:
-            placeholder_type = "auto"
-    else:
-        placeholder_type = "auto" # PDF is always auto-mapped
+
+    detected_placeholders = []
+    placeholder_type = "none"
+    if ext == "docx":
+        detected_placeholders = extract_placeholders_from_docx(filepath)
+        if detected_placeholders:
+            placeholder_type = "auto_detected"
 
     template = CVTemplate(
         name=name,
         description=description,
         company_name=company_name,
         file_path=filepath,
+        file_name=file.filename,
         file_type=ext,
+        file_size_bytes=len(content),
         placeholder_type=placeholder_type,
-        uploaded_by=current_user.id
+        detected_placeholders=detected_placeholders,
+        uploaded_by=current_user.id,
     )
     db.add(template)
     await db.commit()
     await db.refresh(template)
-    return template
+    return template_to_dict(template)
+
 
 @router.get("/{id}")
-async def get_template(id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    result = await db.execute(select(CVTemplate).where(CVTemplate.id == id))
+async def get_template(
+    id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        tmpl_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid template ID format")
+
+    result = await db.execute(select(CVTemplate).where(CVTemplate.id == tmpl_uuid))
     template = result.scalars().first()
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    return template
+    return template_to_dict(template)
+
 
 @router.get("/{id}/placeholders")
-async def get_template_placeholders(id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    template = await get_template(id, db, current_user)
-    if template.file_type != 'docx':
+async def get_template_placeholders(
+    id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        tmpl_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid template ID format")
+
+    result = await db.execute(select(CVTemplate).where(CVTemplate.id == tmpl_uuid))
+    template = result.scalars().first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    if template.file_type != "docx":
         return {"placeholders": []}
     placeholders = extract_placeholders_from_docx(template.file_path)
     return {"placeholders": placeholders}
 
+
 @router.delete("/{id}")
-async def delete_template(id: int, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    template = await get_template(id, db, current_user)
-    if os.path.exists(template.file_path):
-        os.remove(template.file_path)
+async def delete_template(
+    id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        tmpl_uuid = uuid.UUID(id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid template ID format")
+
+    result = await db.execute(select(CVTemplate).where(CVTemplate.id == tmpl_uuid))
+    template = result.scalars().first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    if template.file_path and os.path.exists(template.file_path):
+        try:
+            os.remove(template.file_path)
+        except Exception:
+            pass
+
     await db.delete(template)
     await db.commit()
     return {"msg": "Template deleted"}
