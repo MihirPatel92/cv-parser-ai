@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-// Live production Render backend URL by default, or VITE_API_URL if specified
-const BASE_URL = import.meta.env.VITE_API_URL || 'https://cv-parser-backend-wy3l.onrender.com';
+// Direct production backend URL
+const BASE_URL = 'https://cv-parser-backend-wy3l.onrender.com';
 
 export const apiClient = axios.create({
   baseURL: BASE_URL,
