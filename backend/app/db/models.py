@@ -1,7 +1,7 @@
 import enum
 import uuid as uuid_pkg
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Enum, ForeignKey, Text, Float, Integer, JSON
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Float, Integer, JSON
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -20,7 +20,7 @@ class User(Base):
     email = Column(String(255), unique=True, index=True, nullable=False)
     full_name = Column(String(255), nullable=False)
     hashed_password = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), nullable=False, default=UserRole.recruiter)
+    role = Column(String(50), nullable=False, default="recruiter")
     is_active = Column(Boolean, default=True)
     created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -1,13 +1,12 @@
 import asyncio
 from sqlalchemy.future import select
 from .database import engine, Base, SessionLocal
-from .models import User, UserRole, AIModelConfig
+from .models import User, AIModelConfig
 from ..core.security import hash_password
 from ..core.config import settings
 
 
 async def init_db():
-    # Create all tables from ORM models
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -21,7 +20,7 @@ async def init_db():
                 email="admin@cvparser.com",
                 full_name="Super Administrator",
                 hashed_password=hash_password("Admin@123"),
-                role=UserRole.super_admin,
+                role="super_admin",
                 is_active=True,
             )
             session.add(new_admin)
@@ -35,7 +34,7 @@ async def init_db():
             new_config = AIModelConfig(
                 provider="gemini",
                 model_name="gemini-1.5-flash",
-                api_key_encrypted=settings.GEMINI_API_KEY,  # Can be None; set via Admin UI later
+                api_key_encrypted=settings.GEMINI_API_KEY,
                 ollama_base_url=settings.OLLAMA_BASE_URL,
                 temperature=0.1,
                 max_tokens=4096,
