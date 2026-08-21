@@ -17,11 +17,17 @@ export const Login: React.FC = () => {
     setLoading(true);
     try {
       const data = await loginApi(email, password);
-      login(data.access_token);
+      const user = await login(data.access_token);
       toast.success('Logged in successfully');
-      navigate('/dashboard');
-    } catch (error) {
-      toast.error('Invalid email or password');
+      if (user) {
+        navigate('/dashboard', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
+    } catch (error: any) {
+      console.error('Login error:', error);
+      const msg = error.response?.data?.detail || 'Invalid email or password';
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -29,24 +35,24 @@ export const Login: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-white">
-      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-primary-700 to-primary-900 p-12 text-white flex-col justify-between">
+      <div className="hidden lg:flex lg:w-1/2 bg-gradient-to-br from-indigo-700 to-indigo-900 p-12 text-white flex-col justify-between">
         <div>
           <h1 className="text-4xl font-bold mb-6">CV Parser AI</h1>
-          <p className="text-lg text-primary-100 max-w-md">
+          <p className="text-lg text-indigo-100 max-w-md">
             Automate your CV formatting process with advanced AI models. Extract information accurately and generate perfectly styled documents.
           </p>
         </div>
         <div className="space-y-6">
           <div className="flex items-center space-x-4">
-            <Zap className="h-6 w-6 text-primary-300" />
+            <Zap className="h-6 w-6 text-indigo-300" />
             <span>Lightning fast AI-powered parsing</span>
           </div>
           <div className="flex items-center space-x-4">
-            <FileText className="h-6 w-6 text-primary-300" />
+            <FileText className="h-6 w-6 text-indigo-300" />
             <span>Supports multiple template formats</span>
           </div>
           <div className="flex items-center space-x-4">
-            <ShieldCheck className="h-6 w-6 text-primary-300" />
+            <ShieldCheck className="h-6 w-6 text-indigo-300" />
             <span>Secure and private data processing</span>
           </div>
         </div>
@@ -67,8 +73,8 @@ export const Login: React.FC = () => {
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-shadow"
-                placeholder="admin@example.com"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-shadow"
+                placeholder="admin@cvparser.com"
               />
             </div>
             
@@ -79,7 +85,7 @@ export const Login: React.FC = () => {
                 required
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none transition-shadow"
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-shadow"
                 placeholder="••••••••"
               />
             </div>
@@ -87,14 +93,22 @@ export const Login: React.FC = () => {
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-primary-600 text-white py-2.5 rounded-lg font-medium hover:bg-primary-700 focus:ring-4 focus:ring-primary-100 transition-colors disabled:opacity-70"
+              className="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-medium hover:bg-indigo-700 focus:ring-4 focus:ring-indigo-100 transition-colors disabled:opacity-70 flex items-center justify-center"
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Signing in...
+                </>
+              ) : 'Sign In'}
             </button>
           </form>
           
           <div className="mt-8 text-center text-sm text-gray-500">
-            <p>Default admin: admin@example.com / password123</p>
+            <p>Default credentials: <strong>admin@cvparser.com</strong> / <strong>Admin@123</strong></p>
           </div>
         </div>
       </div>
