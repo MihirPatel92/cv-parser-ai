@@ -45,48 +45,61 @@ class AIOrchestrator:
             raise ValueError(f"Unknown provider: {self.config.provider}")
 
     def parse_json_response(self, response: str) -> dict:
+        if not response or not str(response).strip():
+            raise ValueError("Received empty response from AI model")
+
+        cleaned = str(response).strip()
+
+        # 1. Try direct parse
         try:
-            return json.loads(response)
+            return json.loads(cleaned)
         except json.JSONDecodeError:
-            # Try to extract JSON block using regex if model included markdown
-            match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", response, re.DOTALL)
-            if match:
-                try:
-                    return json.loads(match.group(1).strip())
-                except Exception:
-                    pass
-            # Fallback to finding outermost brackets
-            start = response.find("{")
-            end = response.rfind("}")
-            if start != -1 and end != -1:
-                try:
-                    return json.loads(response[start : end + 1])
-                except Exception:
-                    pass
-            raise ValueError(f"Could not parse valid JSON from AI response: {response[:200]}...")
+            pass
+
+        # 2. Try markdown json block
+        match = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, re.DOTALL)
+        if match:
+            try:
+                return json.loads(match.group(1).strip())
+            except Exception:
+                pass
+
+        # 3. Try finding outermost { ... }
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(cleaned[start : end + 1])
+            except Exception:
+                pass
+
+        raise ValueError(f"Could not parse valid JSON from AI response: {cleaned[:300]}...")
 
     async def extract_cv_data(self, cv_text: str) -> dict:
-        prompt = CV_EXTRACTION_PROMPT.format(cv_text=cv_text)
+        # Use .replace() to avoid Python str.format() KeyError on literal JSON braces
+        prompt = CV_EXTRACTION_PROMPT.replace("{cv_text}", cv_text)
         response = await self.provider.generate(prompt)
         return self.parse_json_response(response)
 
     async def map_to_placeholders(self, placeholders: list, cv_data: dict) -> dict:
-        prompt = PLACEHOLDER_MAPPING_PROMPT.format(
-            placeholders_list=json.dumps(placeholders),
-            cv_data_json=json.dumps(cv_data),
+        prompt = (
+            PLACEHOLDER_MAPPING_PROMPT
+            .replace("{placeholders_list}", json.dumps(placeholders, indent=2))
+            .replace("{cv_data_json}", json.dumps(cv_data, indent=2))
         )
         response = await self.provider.generate(prompt)
         return self.parse_json_response(response)
 
     async def analyze_template_structure(self, template_text: str) -> dict:
-        prompt = STRUCTURE_ANALYSIS_PROMPT.format(template_text=template_text)
+        prompt = STRUCTURE_ANALYSIS_PROMPT.replace("{template_text}", template_text)
         response = await self.provider.generate(prompt)
         return self.parse_json_response(response)
 
     async def freeform_map(self, template_structure: str, cv_data: dict) -> dict:
-        prompt = FREEFORM_MAPPING_PROMPT.format(
-            template_structure=template_structure,
-            cv_data_json=json.dumps(cv_data),
+        prompt = (
+            FREEFORM_MAPPING_PROMPT
+            .replace("{template_structure}", template_structure)
+            .replace("{cv_data_json}", json.dumps(cv_data, indent=2))
         )
         response = await self.provider.generate(prompt)
         return self.parse_json_response(response)

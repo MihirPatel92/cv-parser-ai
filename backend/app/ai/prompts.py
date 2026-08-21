@@ -1,96 +1,163 @@
 CV_EXTRACTION_PROMPT = """
-You are a precise CV/Resume data extractor. Extract ALL information from the following CV text.
-Return ONLY valid JSON matching this exact schema:
+You are a precise, comprehensive CV/Resume data extractor. Extract ALL information from the following CV text.
+Return ONLY valid JSON matching this exact structure:
 {
-  "full_name": "string",
-  "email": "string or null",
-  "phone": "string or null",
-  "location": "string or null",
-  "linkedin": "string or null",
-  "website": "string or null",
-  "professional_summary": "string or null",
-  "skills": ["skill1", "skill2", ...],
-  "technical_skills": ["skill1", ...],
-  "soft_skills": ["skill1", ...],
+  "full_name": "Full Name of Candidate",
+  "first_name": "First Name",
+  "last_name": "Last Name",
+  "job_title": "Primary Job Title / Professional Headline",
+  "email": "Email address or null",
+  "phone": "Phone number or null",
+  "city": "City or null",
+  "country": "Country or null",
+  "location": "Location (City, Country) or null",
+  "linkedin": "LinkedIn profile URL or username or null",
+  "github": "GitHub URL or username or null",
+  "portfolio": "Portfolio or personal website or null",
+  "professional_summary": "Complete professional summary statement",
+  "core_competencies": ["Competency 1", "Competency 2", ...],
+  "skills": ["Skill 1", "Skill 2", ...],
+  "languages": ["Language 1", "Language 2", ...],
+  "frameworks": ["Framework 1", "Framework 2", ...],
+  "cloud_devops": ["Cloud/Tool 1", "Cloud/Tool 2", ...],
+  "databases": ["Database 1", "Database 2", ...],
+  "architecture_patterns": ["Pattern 1", "Pattern 2", ...],
+  "strengths": ["Strength 1", "Strength 2", ...],
+  "technical_skills": {
+    "languages": ["C#", "Python", ...],
+    "frameworks": [".NET Core", "Flask", ...],
+    "frontend": ["React.js", "Angular", ...],
+    "ai_ml": ["PyTorch", "LLMs", "RAG", ...],
+    "databases": ["SQL Server", "PostgreSQL", ...],
+    "cloud_devops": ["Azure", "AWS", "Docker", ...],
+    "tools": ["Git", "Jira", "ALM", ...]
+  },
   "experience": [
     {
-      "company": "string",
-      "title": "string",
-      "start_date": "string",
-      "end_date": "string or 'Present'",
-      "location": "string or null",
-      "responsibilities": ["bullet1", "bullet2", ...]
+      "company": "Company Name",
+      "title": "Job Title",
+      "start_date": "Start Date",
+      "end_date": "End Date or Present",
+      "location": "Location",
+      "team_or_domain": "Team size or Domain area",
+      "bullets": [
+        "Action verb project scope and business impact",
+        "Technical architecture design and optimization metric",
+        "Cross-functional collaboration, CI/CD or code quality",
+        "Mentorship, code reviews or engineering best practices"
+      ]
+    }
+  ],
+  "projects": [
+    {
+      "title": "Project Title / Name",
+      "tech_stack": "Tech Stack used",
+      "link": "Link or demo if available",
+      "bullets": [
+        "Architectural highlight and scalability",
+        "Key features, integration and impact metrics"
+      ]
     }
   ],
   "education": [
     {
-      "institution": "string",
-      "degree": "string",
-      "field": "string or null",
-      "start_date": "string or null",
-      "end_date": "string or null",
-      "gpa": "string or null"
+      "degree": "Degree Name",
+      "institution": "University / Institution Name",
+      "graduation_year": "Year",
+      "gpa": "GPA or Score or null"
     }
   ],
-  "certifications": [{"name": "string", "issuer": "string or null", "date": "string or null"}],
-  "languages": [{"language": "string", "proficiency": "string or null"}],
-  "projects": [{"name": "string", "description": "string", "technologies": ["string"]}],
-  "awards": ["string"],
-  "publications": ["string"],
-  "references": "string or null"
+  "certifications": [
+    {
+      "title": "Certification Title (e.g. PMP, SAFe Agilist)",
+      "issuer": "Issuer Organization",
+      "year": "Year"
+    }
+  ],
+  "spoken_languages": [
+    {
+      "language": "English",
+      "proficiency": "Professional"
+    }
+  ]
 }
 
-CV TEXT:
+CV TEXT TO EXTRACT:
 {cv_text}
 
-Return ONLY the JSON object. No explanation, no markdown, no code blocks.
+Return ONLY valid JSON. Do not include markdown code blocks, backticks, or explanatory text.
 """
 
 PLACEHOLDER_MAPPING_PROMPT = """
-You are a precise data mapping engine. You will map CV data to template placeholders.
+You are an intelligent CV template data mapper. Your task is to map extracted candidate CV data to exact template placeholder tags.
 
-The template contains these placeholders (in their exact original format):
+TEMPLATE PLACEHOLDERS DETECTED (in their exact original format):
 {placeholders_list}
 
-The extracted CV data is:
+CANDIDATE CV DATA:
 {cv_data_json}
 
-Your task: Return a JSON object where each key is the EXACT placeholder text (as it appears in the template, including braces) and the value is the data to fill in.
-
-Rules:
-1. Match placeholders intelligently regardless of naming convention ({{name}}, {{candidate_name}}, {{full_name}} all mean the person's name)
-2. For skill1, skill2, skill3... populate with the first, second, third skill respectively
-3. For experience fields like {{company1}}, {{company2}} - populate with first job, second job etc.
-4. If a placeholder has no matching data, use empty string ""
-5. For multi-line content (responsibilities, summary), format as clean text
-6. Return ONLY valid JSON. Keys must be EXACTLY the placeholder strings including {{ and }}
-
-Return format:
-{{"{{placeholder1}}": "value1", "{{placeholder2}}": "value2"}}
+INSTRUCTIONS:
+1. Return a single JSON object where EVERY key is EXACTLY the placeholder string (including braces `{{` and `}}`).
+2. Map fields intelligently:
+   - `{{First_Name}}` -> Candidate's first name
+   - `{{Last_Name}}` -> Candidate's last name
+   - `{{JOB_TITLE}}` -> Primary job title / target role
+   - `{{City}}`, `{{Country}}`, `{{Email_Address}}`, `{{Phone_Number}}`, `{{LinkedIn_URL}}`, `{{GitHub_URL}}`, `{{Portfolio_URL}}` -> Candidate's contact info
+   - `{{Language_1}}`, `{{Language_2}}`, ... -> Programming languages from skills
+   - `{{Framework_1}}`, `{{Framework_2}}`, ... -> Web frameworks / technologies
+   - `{{Cloud_1}}`, `{{DevOps_Tool_1}}`, ... -> Cloud and DevOps tools
+   - `{{Database_1}}`, `{{Database_2}}`, ... -> Database systems
+   - `{{Architecture_Pattern_1}}`, ... -> Architecture / design patterns or core competencies
+   - `{{Strength_1}}`, `{{Strength_2}}`, ... -> Core strengths / competencies
+   - `{{Professional_Summary_...}}` (any long summary placeholder) -> Full professional summary text
+   - `{{Role_1_Job_Title}}`, `{{Role_1_Company_Name}}`, `{{Role_1_Start_Date}}`, `{{Role_1_End_Date}}`, `{{Role_1_Team_Or_Domain}}`, `{{Role_1_Location}}` -> Details from most recent job
+   - `{{Role_1_Bullet_1_...}}`, `{{Role_1_Bullet_2_...}}`, ... -> Distinct bullet points from job 1
+   - `{{Role_2_...}}`, `{{Role_3_...}}` -> Corresponding details from job 2, job 3, etc.
+   - `{{Project_1_Title}}`, `{{Project_1_Tech_Stack}}`, `{{Project_1_Description_Bullet_1_...}}` -> Projects details
+   - `{{Degree_Name}}`, `{{University_Name}}`, `{{Graduation_Year}}`, `{{GPA_Score}}` -> Primary education
+   - `{{Secondary_Degree_Name}}`, `{{Secondary_Institution}}`, `{{Secondary_Grad_Year}}` -> Secondary education
+   - `{{Certification_1_Title}}`, `{{Cert_1_Issuer}}`, `{{Cert_1_Year}}` -> Certification 1
+   - `{{Certification_2_Title}}`, `{{Cert_2_Issuer}}`, `{{Cert_2_Year}}` -> Certification 2
+   - `{{Certification_3_Title}}`, `{{Cert_3_Issuer}}`, `{{Cert_3_Year}}` -> Certification 3
+3. For any placeholder with no corresponding candidate data, set value to empty string `""` (do NOT leave placeholder tag or null).
+4. Return ONLY valid JSON format:
+{
+  "{{First_Name}}": "Mihir",
+  "{{Last_Name}}": "Patel",
+  ...
+}
 """
 
 STRUCTURE_ANALYSIS_PROMPT = """
-Analyze this template document text and identify its structure/sections.
+Analyze this CV template document and identify its section structure.
 Return JSON with the sections found:
-{"sections": ["Summary", "Skills", "Experience", "Education"], "has_placeholders": false}
+{
+  "sections": ["Professional Summary", "Technical Skills", "Professional Experience", "Education", "Certifications", "Projects"],
+  "has_placeholders": false
+}
 
 Template text:
 {template_text}
 
-Return ONLY the JSON object. No explanation, no markdown, no code blocks.
+Return ONLY valid JSON.
 """
 
 FREEFORM_MAPPING_PROMPT = """
-You are an expert CV formatter. The company template has this structure:
+You are an expert CV formatter. The target company template uses this structure:
 {template_structure}
 
 The candidate's CV data is:
 {cv_data_json}
 
-Rewrite the candidate's CV following EXACTLY the company template's section order and style.
-Return a JSON object with each section filled with the candidate's data:
-{"section_name": "formatted content"}
+Rewrite and re-sequence the candidate's CV data to match the target template's sections and styling.
+Return a JSON object where each key is the section name and value is the formatted content:
+{
+  "PROFESSIONAL SUMMARY": "...",
+  "TECHNICAL SKILLS": "...",
+  "PROFESSIONAL EXPERIENCE": "...",
+  "EDUCATION": "..."
+}
 
-Keep the same section names as in the template. Format experience with bullet points.
-Return ONLY the JSON object. No explanation, no markdown, no code blocks.
+Return ONLY valid JSON.
 """
