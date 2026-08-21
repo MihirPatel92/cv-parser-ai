@@ -1,87 +1,50 @@
 import os
 import re
-from fpdf import FPDF
 from ..parsers.docx_parser import extract_text_from_docx
 
 
-class StructuredCVPDF(FPDF):
-    def header(self):
-        pass
+def convert_docx_to_pdf_with_fitz(raw_text: str, output_path: str) -> str:
+    """Generate professional PDF using PyMuPDF (fitz)."""
+    import fitz
 
-    def footer(self):
-        self.set_y(-12)
-        self.set_font("helvetica", "I", 8)
-        self.set_text_color(160, 160, 160)
-        self.cell(self.epw, 8, f"Page {self.page_no()}", align="C")
+    doc = fitz.open()
+    page_w, page_h = 595.0, 842.0  # A4 standard dimensions in points
+    margin_x = 42.0
+    margin_top = 45.0
+    usable_w = page_w - (margin_x * 2)
 
-
-def sanitize_text(text: str) -> str:
-    if not text:
-        return ""
-    replacements = {
-        "—": " - ",
-        "–": " - ",
-        "•": " * ",
-        "·": " * ",
-        "’": "'",
-        "‘": "'",
-        "“": '"',
-        "”": '"',
-        "…": "...",
-        "│": "|",
-        "▶": ">",
-        "►": ">",
-        "✔": "+",
-        "★": "*",
-        "✦": "*",
-        "◆": "*",
-        "▸": "*",
-        "●": "*",
-        "\t": "    ",
-        "\r": "",
-    }
-    for orig, repl in replacements.items():
-        text = text.replace(orig, repl)
-
-    # Encode to latin-1 safely replacing unsupported chars
-    return text.encode("latin-1", "replace").decode("latin-1")
-
-
-def convert_docx_to_pdf(docx_path: str, output_path: str) -> str:
-    """Generate a clean, high-quality, valid PDF document from the formatted DOCX."""
-    raw_text = extract_text_from_docx(docx_path)
-    lines = [line.strip() for line in raw_text.split("\n")]
-
-    pdf = StructuredCVPDF(orientation="P", unit="mm", format="A4")
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.set_margins(15, 15, 15)
-    pdf.add_page()
-
-    epw = pdf.epw # Effective page width (width minus left and right margins)
+    page = doc.new_page(width=page_w, height=page_h)
+    y = margin_top
+    lines = [l.strip() for l in raw_text.split("\n")]
     is_first_line = True
 
     for line in lines:
-        cleaned = sanitize_text(line)
-        if not cleaned:
-            pdf.ln(2)
+        if not line:
+            y += 5
             continue
 
-        # Always reset x to left margin before printing each block
-        pdf.set_x(pdf.l_margin)
+        # Check page height break
+        if y > page_h - 55:
+            page = doc.new_page(width=page_w, height=page_h)
+            y = margin_top
 
-        # Candidate Name (Header)
-        if is_first_line and len(cleaned) < 60:
-            pdf.set_font("helvetica", "B", 16)
-            pdf.set_text_color(30, 41, 59) # Slate 800
-            pdf.multi_cell(epw, 7, cleaned, align="L")
-            pdf.ln(1)
+        # Header - Candidate Name
+        if is_first_line and len(line) < 60:
+            page.insert_text(
+                fitz.Point(margin_x, y + 14),
+                line,
+                fontsize=18,
+                fontname="helv",
+                color=(0.12, 0.16, 0.23), # Slate 800
+            )
+            y += 24
             is_first_line = False
             continue
 
         is_first_line = False
 
-        # Section Headers (ALL CAPS or known keywords)
-        if (cleaned.isupper() and len(cleaned) < 50) or cleaned in (
+        # Section Headers (ALL CAPS or known CV sections)
+        if (line.isupper() and len(line) < 45) or line in (
             "PROFESSIONAL SUMMARY",
             "TECHNICAL SKILLS",
             "PROFESSIONAL EXPERIENCE",
@@ -92,29 +55,123 @@ def convert_docx_to_pdf(docx_path: str, output_path: str) -> str:
             "PROJECTS",
             "CORE COMPETENCIES",
         ):
-            pdf.ln(3)
-            pdf.set_font("helvetica", "B", 10.5)
-            pdf.set_text_color(79, 70, 229) # Indigo 600
-            pdf.multi_cell(epw, 6, cleaned, border="B", align="L")
-            pdf.ln(2)
-        # Job Titles / Subheadings
-        elif " | " in cleaned and len(cleaned) < 100:
-            pdf.set_font("helvetica", "B", 9.5)
-            pdf.set_text_color(30, 41, 59)
-            pdf.multi_cell(epw, 5, cleaned, align="L")
-        # Bullet points
-        elif cleaned.startswith("*") or cleaned.startswith("-"):
-            pdf.set_font("helvetica", "", 9)
-            pdf.set_text_color(71, 85, 105) # Slate 600
-            bullet_content = cleaned.lstrip("*- ")
-            pdf.multi_cell(epw, 4.5, f"  *  {bullet_content}", align="L")
-        # Regular text / paragraphs
-        else:
-            pdf.set_font("helvetica", "", 9)
-            pdf.set_text_color(51, 65, 85)
-            pdf.multi_cell(epw, 4.5, cleaned, align="L")
+            y += 6
+            if y > page_h - 55:
+                page = doc.new_page(width=page_w, height=page_h)
+                y = margin_top
 
-    # Ensure parent output directory exists
-    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+            # Title text
+            page.insert_text(
+                fitz.Point(margin_x, y + 9),
+                line.upper(),
+                fontsize=10.5,
+                fontname="helv",
+                color=(0.31, 0.27, 0.90), # Indigo 600
+            )
+            # Underline line
+            page.draw_line(
+                fitz.Point(margin_x, y + 12),
+                fitz.Point(margin_x + usable_w, y + 12),
+                color=(0.85, 0.88, 0.92),
+                width=0.75,
+            )
+            y += 18
+
+        # Role / Company line
+        elif " | " in line and len(line) < 100:
+            y += 3
+            if y > page_h - 55:
+                page = doc.new_page(width=page_w, height=page_h)
+                y = margin_top
+
+            page.insert_text(
+                fitz.Point(margin_x, y + 8),
+                line,
+                fontsize=9.5,
+                fontname="helv",
+                color=(0.12, 0.16, 0.23),
+            )
+            y += 13
+
+        # Bullet points
+        elif line.startswith("*") or line.startswith("-") or line.startswith("•"):
+            bullet_clean = line.lstrip("*-• ")
+            rect = fitz.Rect(margin_x + 12, y, margin_x + usable_w, y + 40)
+            page.insert_text(
+                fitz.Point(margin_x + 2, y + 7.5),
+                "•",
+                fontsize=10,
+                fontname="helv",
+                color=(0.31, 0.27, 0.90),
+            )
+            rc = page.insert_textbox(
+                rect,
+                bullet_clean,
+                fontsize=9,
+                fontname="helv",
+                color=(0.28, 0.33, 0.41),
+                lineheight=1.2,
+            )
+            # Height based on length
+            lines_count = max(1, (len(bullet_clean) // 85) + 1)
+            y += (lines_count * 11) + 2
+
+        # Regular text paragraphs
+        else:
+            rect = fitz.Rect(margin_x, y, margin_x + usable_w, y + 80)
+            rc = page.insert_textbox(
+                rect,
+                line,
+                fontsize=9,
+                fontname="helv",
+                color=(0.20, 0.25, 0.33),
+                lineheight=1.2,
+            )
+            lines_count = max(1, (len(line) // 90) + 1)
+            y += (lines_count * 11) + 3
+
+    # Add page numbers at the bottom
+    for i, p in enumerate(doc):
+        p.insert_text(
+            fitz.Point(page_w / 2 - 15, page_h - 20),
+            f"Page {i + 1}",
+            fontsize=8,
+            fontname="helv",
+            color=(0.60, 0.60, 0.60),
+        )
+
+    doc.save(output_path)
+    doc.close()
+    return output_path
+
+
+def convert_docx_to_pdf_with_fpdf2(raw_text: str, output_path: str) -> str:
+    """Fallback generator using fpdf2."""
+    from fpdf import FPDF
+
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("helvetica", size=9)
+
+    for line in raw_text.split("\n"):
+        clean = line.encode("latin-1", "replace").decode("latin-1")
+        if not clean.strip():
+            pdf.ln(3)
+        else:
+            pdf.write(5, clean + "\n")
+
     pdf.output(output_path)
     return output_path
+
+
+def convert_docx_to_pdf(docx_path: str, output_path: str) -> str:
+    """Generate clean, valid PDF from DOCX using PyMuPDF with fpdf2 fallback."""
+    raw_text = extract_text_from_docx(docx_path)
+    os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+
+    try:
+        return convert_docx_to_pdf_with_fitz(raw_text, output_path)
+    except Exception as fitz_err:
+        print(f"PyMuPDF generation note: {fitz_err}. Trying fpdf2 fallback.")
+        return convert_docx_to_pdf_with_fpdf2(raw_text, output_path)
