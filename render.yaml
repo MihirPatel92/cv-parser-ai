@@ -1,5 +1,5 @@
 services:
-  # ── Backend (FastAPI Python Service) ──────────────────────────────────────
+  # ── Backend (FastAPI) ──────────────────────────────────────────────────────
   - type: web
     name: cv-parser-backend
     runtime: python
@@ -30,8 +30,6 @@ services:
         sync: false
       - key: OLLAMA_BASE_URL
         value: http://localhost:11434
-      - key: PYTHON_VERSION
-        value: "3.11.0"
       - key: FRONTEND_URL
         value: https://cv-parser-frontend.onrender.com
 
@@ -50,8 +48,6 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://cv-parser-backend.onrender.com
-      - key: NODE_VERSION
-        value: "20"
 
 # ── PostgreSQL Database ────────────────────────────────────────────────────
 databases:
